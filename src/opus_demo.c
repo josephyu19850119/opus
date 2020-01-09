@@ -35,9 +35,7 @@
 #include <math.h>
 #include <string.h>
 #include "opus.h"
-#include "debug.h"
 #include "opus_types.h"
-#include "opus_private.h"
 #include "opus_multistream.h"
 
 #define MAX_PACKET 1500
@@ -78,105 +76,6 @@ static opus_uint32 char_to_int(unsigned char ch[4])
     return ((opus_uint32)ch[0]<<24) | ((opus_uint32)ch[1]<<16)
          | ((opus_uint32)ch[2]<< 8) |  (opus_uint32)ch[3];
 }
-
-#define check_encoder_option(decode_only, opt) do {if (decode_only) {fprintf(stderr, "option %s is only for encoding\n", opt); goto failure;}} while(0)
-
-static const int silk8_test[][4] = {
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_NARROWBAND, 960*3, 1},
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_NARROWBAND, 960*2, 1},
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_NARROWBAND, 960,   1},
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_NARROWBAND, 480,   1},
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_NARROWBAND, 960*3, 2},
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_NARROWBAND, 960*2, 2},
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_NARROWBAND, 960,   2},
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_NARROWBAND, 480,   2}
-};
-
-static const int silk12_test[][4] = {
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_MEDIUMBAND, 960*3, 1},
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_MEDIUMBAND, 960*2, 1},
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_MEDIUMBAND, 960,   1},
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_MEDIUMBAND, 480,   1},
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_MEDIUMBAND, 960*3, 2},
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_MEDIUMBAND, 960*2, 2},
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_MEDIUMBAND, 960,   2},
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_MEDIUMBAND, 480,   2}
-};
-
-static const int silk16_test[][4] = {
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_WIDEBAND, 960*3, 1},
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_WIDEBAND, 960*2, 1},
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_WIDEBAND, 960,   1},
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_WIDEBAND, 480,   1},
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_WIDEBAND, 960*3, 2},
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_WIDEBAND, 960*2, 2},
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_WIDEBAND, 960,   2},
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_WIDEBAND, 480,   2}
-};
-
-static const int hybrid24_test[][4] = {
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_SUPERWIDEBAND, 960, 1},
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_SUPERWIDEBAND, 480, 1},
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_SUPERWIDEBAND, 960, 2},
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_SUPERWIDEBAND, 480, 2}
-};
-
-static const int hybrid48_test[][4] = {
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_FULLBAND, 960, 1},
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_FULLBAND, 480, 1},
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_FULLBAND, 960, 2},
-      {MODE_SILK_ONLY, OPUS_BANDWIDTH_FULLBAND, 480, 2}
-};
-
-static const int celt_test[][4] = {
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_FULLBAND,      960, 1},
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_SUPERWIDEBAND, 960, 1},
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_WIDEBAND,      960, 1},
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_NARROWBAND,    960, 1},
-
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_FULLBAND,      480, 1},
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_SUPERWIDEBAND, 480, 1},
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_WIDEBAND,      480, 1},
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_NARROWBAND,    480, 1},
-
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_FULLBAND,      240, 1},
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_SUPERWIDEBAND, 240, 1},
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_WIDEBAND,      240, 1},
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_NARROWBAND,    240, 1},
-
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_FULLBAND,      120, 1},
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_SUPERWIDEBAND, 120, 1},
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_WIDEBAND,      120, 1},
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_NARROWBAND,    120, 1},
-
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_FULLBAND,      960, 2},
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_SUPERWIDEBAND, 960, 2},
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_WIDEBAND,      960, 2},
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_NARROWBAND,    960, 2},
-
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_FULLBAND,      480, 2},
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_SUPERWIDEBAND, 480, 2},
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_WIDEBAND,      480, 2},
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_NARROWBAND,    480, 2},
-
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_FULLBAND,      240, 2},
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_SUPERWIDEBAND, 240, 2},
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_WIDEBAND,      240, 2},
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_NARROWBAND,    240, 2},
-
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_FULLBAND,      120, 2},
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_SUPERWIDEBAND, 120, 2},
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_WIDEBAND,      120, 2},
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_NARROWBAND,    120, 2},
-
-};
-
-static const int celt_hq_test[][4] = {
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_FULLBAND,      960, 2},
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_FULLBAND,      480, 2},
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_FULLBAND,      240, 2},
-      {MODE_CELT_ONLY, OPUS_BANDWIDTH_FULLBAND,      120, 2},
-};
 
 #if 0 /* This is a hack that replaces the normal encoder/decoder with the multistream version */
 #define OpusEncoder OpusMSEncoder
@@ -340,146 +239,6 @@ int main(int argc, char *argv[])
     use_dtx = 0;
     packet_loss_perc = 0;
 
-    while( args < argc - 2 ) {
-        /* process command line options */
-        if( strcmp( argv[ args ], "-cbr" ) == 0 ) {
-            check_encoder_option(decode_only, "-cbr");
-            use_vbr = 0;
-            args++;
-        } else if( strcmp( argv[ args ], "-bandwidth" ) == 0 ) {
-            check_encoder_option(decode_only, "-bandwidth");
-            if (strcmp(argv[ args + 1 ], "NB")==0)
-                bandwidth = OPUS_BANDWIDTH_NARROWBAND;
-            else if (strcmp(argv[ args + 1 ], "MB")==0)
-                bandwidth = OPUS_BANDWIDTH_MEDIUMBAND;
-            else if (strcmp(argv[ args + 1 ], "WB")==0)
-                bandwidth = OPUS_BANDWIDTH_WIDEBAND;
-            else if (strcmp(argv[ args + 1 ], "SWB")==0)
-                bandwidth = OPUS_BANDWIDTH_SUPERWIDEBAND;
-            else if (strcmp(argv[ args + 1 ], "FB")==0)
-                bandwidth = OPUS_BANDWIDTH_FULLBAND;
-            else {
-                fprintf(stderr, "Unknown bandwidth %s. "
-                                "Supported are NB, MB, WB, SWB, FB.\n",
-                                argv[ args + 1 ]);
-                goto failure;
-            }
-            args += 2;
-        } else if( strcmp( argv[ args ], "-framesize" ) == 0 ) {
-            check_encoder_option(decode_only, "-framesize");
-            if (strcmp(argv[ args + 1 ], "2.5")==0)
-                frame_size = sampling_rate/400;
-            else if (strcmp(argv[ args + 1 ], "5")==0)
-                frame_size = sampling_rate/200;
-            else if (strcmp(argv[ args + 1 ], "10")==0)
-                frame_size = sampling_rate/100;
-            else if (strcmp(argv[ args + 1 ], "20")==0)
-                frame_size = sampling_rate/50;
-            else if (strcmp(argv[ args + 1 ], "40")==0)
-                frame_size = sampling_rate/25;
-            else if (strcmp(argv[ args + 1 ], "60")==0)
-                frame_size = 3*sampling_rate/50;
-            else if (strcmp(argv[ args + 1 ], "80")==0)
-                frame_size = 4*sampling_rate/50;
-            else if (strcmp(argv[ args + 1 ], "100")==0)
-                frame_size = 5*sampling_rate/50;
-            else if (strcmp(argv[ args + 1 ], "120")==0)
-                frame_size = 6*sampling_rate/50;
-            else {
-                fprintf(stderr, "Unsupported frame size: %s ms. "
-                                "Supported are 2.5, 5, 10, 20, 40, 60, 80, 100, 120.\n",
-                                argv[ args + 1 ]);
-                goto failure;
-            }
-            args += 2;
-        } else if( strcmp( argv[ args ], "-max_payload" ) == 0 ) {
-            check_encoder_option(decode_only, "-max_payload");
-            max_payload_bytes = atoi( argv[ args + 1 ] );
-            args += 2;
-        } else if( strcmp( argv[ args ], "-complexity" ) == 0 ) {
-            check_encoder_option(decode_only, "-complexity");
-            complexity = atoi( argv[ args + 1 ] );
-            args += 2;
-        } else if( strcmp( argv[ args ], "-inbandfec" ) == 0 ) {
-            use_inbandfec = 1;
-            args++;
-        } else if( strcmp( argv[ args ], "-forcemono" ) == 0 ) {
-            check_encoder_option(decode_only, "-forcemono");
-            forcechannels = 1;
-            args++;
-        } else if( strcmp( argv[ args ], "-cvbr" ) == 0 ) {
-            check_encoder_option(decode_only, "-cvbr");
-            cvbr = 1;
-            args++;
-        } else if( strcmp( argv[ args ], "-delayed-decision" ) == 0 ) {
-            check_encoder_option(decode_only, "-delayed-decision");
-            delayed_decision = 1;
-            args++;
-        } else if( strcmp( argv[ args ], "-dtx") == 0 ) {
-            check_encoder_option(decode_only, "-dtx");
-            use_dtx = 1;
-            args++;
-        } else if( strcmp( argv[ args ], "-loss" ) == 0 ) {
-            packet_loss_perc = atoi( argv[ args + 1 ] );
-            args += 2;
-        } else if( strcmp( argv[ args ], "-sweep" ) == 0 ) {
-            check_encoder_option(decode_only, "-sweep");
-            sweep_bps = atoi( argv[ args + 1 ] );
-            args += 2;
-        } else if( strcmp( argv[ args ], "-random_framesize" ) == 0 ) {
-            check_encoder_option(decode_only, "-random_framesize");
-            random_framesize = 1;
-            args++;
-        } else if( strcmp( argv[ args ], "-sweep_max" ) == 0 ) {
-            check_encoder_option(decode_only, "-sweep_max");
-            sweep_max = atoi( argv[ args + 1 ] );
-            args += 2;
-        } else if( strcmp( argv[ args ], "-random_fec" ) == 0 ) {
-            check_encoder_option(decode_only, "-random_fec");
-            random_fec = 1;
-            args++;
-        } else if( strcmp( argv[ args ], "-silk8k_test" ) == 0 ) {
-            check_encoder_option(decode_only, "-silk8k_test");
-            mode_list = silk8_test;
-            nb_modes_in_list = 8;
-            args++;
-        } else if( strcmp( argv[ args ], "-silk12k_test" ) == 0 ) {
-            check_encoder_option(decode_only, "-silk12k_test");
-            mode_list = silk12_test;
-            nb_modes_in_list = 8;
-            args++;
-        } else if( strcmp( argv[ args ], "-silk16k_test" ) == 0 ) {
-            check_encoder_option(decode_only, "-silk16k_test");
-            mode_list = silk16_test;
-            nb_modes_in_list = 8;
-            args++;
-        } else if( strcmp( argv[ args ], "-hybrid24k_test" ) == 0 ) {
-            check_encoder_option(decode_only, "-hybrid24k_test");
-            mode_list = hybrid24_test;
-            nb_modes_in_list = 4;
-            args++;
-        } else if( strcmp( argv[ args ], "-hybrid48k_test" ) == 0 ) {
-            check_encoder_option(decode_only, "-hybrid48k_test");
-            mode_list = hybrid48_test;
-            nb_modes_in_list = 4;
-            args++;
-        } else if( strcmp( argv[ args ], "-celt_test" ) == 0 ) {
-            check_encoder_option(decode_only, "-celt_test");
-            mode_list = celt_test;
-            nb_modes_in_list = 32;
-            args++;
-        } else if( strcmp( argv[ args ], "-celt_hq_test" ) == 0 ) {
-            check_encoder_option(decode_only, "-celt_hq_test");
-            mode_list = celt_hq_test;
-            nb_modes_in_list = 4;
-            args++;
-        } else {
-            printf( "Error: unrecognized setting: %s\n\n", argv[ args ] );
-            print_usage( argv );
-            goto failure;
-        }
-    }
-
     if (sweep_max)
        sweep_min = bitrate_bps;
 
@@ -636,7 +395,8 @@ int main(int argc, char *argv[])
                newsize*=2;
             if (newsize < sampling_rate/100 && frame_size >= sampling_rate/100)
             {
-                opus_encoder_ctl(enc, OPUS_SET_FORCE_MODE(MODE_CELT_ONLY));
+                // opus_encoder_ctl(enc, OPUS_SET_FORCE_MODE(MODE_CELT_ONLY));
+                printf("SKIP: opus_encoder_ctl(enc, OPUS_SET_FORCE_MODE(MODE_CELT_ONLY));\n");
                 delayed_celt=1;
             } else {
                 frame_size = newsize;
@@ -675,7 +435,8 @@ int main(int argc, char *argv[])
             if (mode_list!=NULL)
             {
                 opus_encoder_ctl(enc, OPUS_SET_BANDWIDTH(mode_list[curr_mode][1]));
-                opus_encoder_ctl(enc, OPUS_SET_FORCE_MODE(mode_list[curr_mode][0]));
+                // opus_encoder_ctl(enc, OPUS_SET_FORCE_MODE(mode_list[curr_mode][0]));
+                printf("SKIP: opus_encoder_ctl(enc, OPUS_SET_FORCE_MODE(mode_list[curr_mode][0]));\n");
                 opus_encoder_ctl(enc, OPUS_SET_FORCE_CHANNELS(mode_list[curr_mode][3]));
                 frame_size = mode_list[curr_mode][2];
             }
@@ -874,7 +635,8 @@ int main(int argc, char *argv[])
     } else {
        fprintf(stderr, "bitrate statistics are undefined\n");
     }
-    silk_TimerSave("opus_timing.txt");
+    // silk_TimerSave("opus_timing.txt");
+    fprintf(stderr, "SKIP: silk_TimerSave\n");
     ret = EXIT_SUCCESS;
 failure:
     opus_encoder_destroy(enc);
