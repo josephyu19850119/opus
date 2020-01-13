@@ -34,6 +34,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
+#include <fstream>
 #include "opus.h"
 #include "opus_types.h"
 #include "opus_multistream.h"
@@ -106,7 +107,9 @@ static OpusDecoder *ms_opus_decoder_create(opus_int32 Fs, int channels, int *err
 }
 #endif
 
-int opus_coder(bool decode_only, bool encode_only, opus_int32 sampling_rate, int channels, opus_int32 bitrate_bps, const char *inFile, const char *outFile);
+int opus_coder(bool decode_only, bool encode_only, opus_int32 sampling_rate, int channels, opus_int32 bitrate_bps, std::istream& inData, std::ostream& outData);
+
+using namespace std;
 
 int main(int argc, char *argv[])
 {
@@ -142,17 +145,25 @@ int main(int argc, char *argv[])
       bitrate_bps = (opus_int32)atol(argv[4]);
    }
 
-   const char *inFile = argv[argc - 2];
-   const char *outFile = argv[argc - 1];
+   ifstream inFile(argv[argc - 2], ios_base::in |ios_base::binary);
+   if (!inFile.is_open())
+   {
+      printf("Cannot open file %s", argv[argc - 2]);
+      return 1;
+   }
 
-   return opus_coder(decode_only, encode_only, sampling_rate, channels, bitrate_bps, inFile, outFile);
+   ofstream outFile(argv[argc - 1], ios_base::out |ios_base::binary);
+
+   int result =  opus_coder(decode_only, encode_only, sampling_rate, channels, bitrate_bps, inFile, outFile);
+
+   inFile.close();
+   outFile.close();
+   return result;
 }
 
-int opus_coder(bool decode_only, bool encode_only, opus_int32 sampling_rate, int channels, opus_int32 bitrate_bps, const char *inFile, const char *outFile)
+int opus_coder(bool decode_only, bool encode_only, opus_int32 sampling_rate, int channels, opus_int32 bitrate_bps, std::istream& inData, std::ostream& outData)
 {
     int err;
-    FILE *fin=NULL;
-    FILE *fout=NULL;
     OpusEncoder *enc=NULL;
     OpusDecoder *dec=NULL;
     int len[2];
@@ -184,7 +195,6 @@ int opus_coder(bool decode_only, bool encode_only, opus_int32 sampling_rate, int
     opus_uint32 enc_final_range[2];
     opus_uint32 dec_final_range;
     int max_frame_size = 48000*2;
-    size_t num_read;
     int curr_read=0;
     int sweep_bps = 0;
     int random_framesize=0, newsize=0, delayed_celt=0;
@@ -225,28 +235,15 @@ int opus_coder(bool decode_only, bool encode_only, opus_int32 sampling_rate, int
         goto failure;
     }
 
-    fin = fopen(inFile, "rb");
-    if (!fin)
-    {
-        fprintf (stderr, "Could not open input file %s\n", inFile);
-        goto failure;
-    }
     if (mode_list)
     {
        int size;
-       fseek(fin, 0, SEEK_END);
-       size = ftell(fin);
+       inData.seekg(0, ios::end);
+       size = inData.tellg();
        fprintf(stderr, "File size is %d bytes\n", size);
-       fseek(fin, 0, SEEK_SET);
+       inData.seekg(0);
        mode_switch_time = size/sizeof(short)/channels/nb_modes_in_list;
        fprintf(stderr, "Switching mode every %d samples\n", mode_switch_time);
-    }
-
-    fout = fopen(outFile, "wb+");
-    if (!fout)
-    {
-        fprintf (stderr, "Could not open output file %s\n", outFile);
-        goto failure;
     }
 
     if (!decode_only)
@@ -383,8 +380,8 @@ int opus_coder(bool decode_only, bool encode_only, opus_int32 sampling_rate, int
         if (decode_only)
         {
             unsigned char ch[4];
-            num_read = fread(ch, 1, 4, fin);
-            if (num_read!=4)
+            inData.read((char*)ch, 4);
+            if ((inData.rdstate() & ifstream::eofbit) || (inData.rdstate() & ifstream::failbit))
                 break;
             len[toggle] = char_to_int(ch);
             if (len[toggle]>max_payload_bytes || len[toggle]<0)
@@ -392,16 +389,14 @@ int opus_coder(bool decode_only, bool encode_only, opus_int32 sampling_rate, int
                 fprintf(stderr, "Invalid payload length: %d\n",len[toggle]);
                 break;
             }
-            num_read = fread(ch, 1, 4, fin);
-            if (num_read!=4)
+            inData.read((char*)ch, 4);
+            if ((inData.rdstate() & ifstream::eofbit) || (inData.rdstate() & ifstream::failbit))
                 break;
             enc_final_range[toggle] = char_to_int(ch);
-            num_read = fread(data[toggle], 1, len[toggle], fin);
-            if (num_read!=(size_t)len[toggle])
+            inData.read((char*)data[toggle], len[toggle]);
+            if ((inData.rdstate() & ifstream::eofbit) || (inData.rdstate() & ifstream::failbit))
             {
-                fprintf(stderr, "Ran out of input, "
-                                "expecting %d bytes got %d\n",
-                                len[toggle],(int)num_read);
+                fprintf(stderr, "Ran out of input, expecting %d bytes\n", len[toggle]);
                 break;
             }
         } else {
@@ -414,8 +409,7 @@ int opus_coder(bool decode_only, bool encode_only, opus_int32 sampling_rate, int
                 opus_encoder_ctl(enc, OPUS_SET_FORCE_CHANNELS(mode_list[curr_mode][3]));
                 frame_size = mode_list[curr_mode][2];
             }
-            num_read = fread(fbytes, sizeof(short)*channels, frame_size-remaining, fin);
-            curr_read = (int)num_read;
+            curr_read = inData.readsome((char*)fbytes, sizeof(short)*channels * frame_size-remaining);
             tot_in += curr_read;
             for(i=0;i<curr_read*channels;i++)
             {
@@ -481,19 +475,13 @@ int opus_coder(bool decode_only, bool encode_only, opus_int32 sampling_rate, int
         {
             unsigned char int_field[4];
             int_to_char(len[toggle], int_field);
-            if (fwrite(int_field, 1, 4, fout) != 4) {
-               fprintf(stderr, "Error writing.\n");
-               goto failure;
-            }
+            outData.write((char*)int_field, 4);
+
             int_to_char(enc_final_range[toggle], int_field);
-            if (fwrite(int_field, 1, 4, fout) != 4) {
-               fprintf(stderr, "Error writing.\n");
-               goto failure;
-            }
-            if (fwrite(data[toggle], 1, len[toggle], fout) != (unsigned)len[toggle]) {
-               fprintf(stderr, "Error writing.\n");
-               goto failure;
-            }
+            outData.write((char*)int_field, 4);
+
+            outData.write((char*)data[toggle], len[toggle]);
+
             tot_samples += nb_encoded;
         } else {
             opus_int32 output_samples;
@@ -533,10 +521,8 @@ int opus_coder(bool decode_only, bool encode_only, opus_int32 sampling_rate, int
                           fbytes[2*i]=s&0xFF;
                           fbytes[2*i+1]=(s>>8)&0xFF;
                        }
-                       if (fwrite(fbytes, sizeof(short)*channels, output_samples-skip, fout) != (unsigned)(output_samples-skip)){
-                          fprintf(stderr, "Error writing.\n");
-                          goto failure;
-                       }
+
+                       outData.write((char*)fbytes, sizeof(short)*channels * output_samples-skip);
                        tot_out += output_samples-skip;
                     }
                     if (output_samples<skip) skip -= output_samples;
@@ -617,10 +603,6 @@ failure:
     opus_decoder_destroy(dec);
     free(data[0]);
     free(data[1]);
-    if (fin)
-        fclose(fin);
-    if (fout)
-        fclose(fout);
     free(in);
     free(out);
     free(fbytes);
